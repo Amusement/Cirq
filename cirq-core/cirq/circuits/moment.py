@@ -48,6 +48,19 @@ def _default_breakdown(qid: cirq.Qid) -> tuple[Any, Any]:
         return None, qid
 
 
+def _duplicate_measurement_keys_present(args: tuple[Any, ...], kwargs: dict[str, Any]) -> bool:
+    contents: tuple[cirq.MeasurementKey] = args[1:]
+    flatten_contents: bool = kwargs.get('_flatten_contents', True)
+
+    # Extract ops from contents, while respecting original conditions
+    operations = (
+        tuple(op_tree.flatten_to_ops(contents))
+        if flatten_contents
+        else cast(tuple['cirq.Operation'], contents)
+    )
+    all_measurement_keys = [key for op in operations for key in protocols.measurement_key_objs(op)]
+    return len(set(all_measurement_keys)) != len(all_measurement_keys)
+
 class Moment:
     """A time-slice of operations within a circuit.
 
@@ -66,6 +79,12 @@ class Moment:
             are no such operations, returns an empty Moment.
     """
 
+    @_compat.deprecated_parameter(
+        deadline='v1.8',
+        fix='Disallow duplicate measurement keys in operations within the same Moment',
+        parameter_desc='contents',
+        match=lambda args, kwargs: _duplicate_measurement_keys_present(args, kwargs)
+    )
     def __init__(
         self,
         *contents: cirq.OP_TREE,
@@ -112,6 +131,7 @@ class Moment:
         self._control_keys: frozenset[cirq.MeasurementKey] | None = None
         self._tags = tags
 
+    # TODO(naph): Sort this out as well.
     @classmethod
     def from_ops(cls, *ops: cirq.Operation, tags: tuple[Hashable, ...] = ()) -> cirq.Moment:
         """Construct a Moment from the given operations.
